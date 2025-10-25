@@ -1,0 +1,729 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <!-- Tambahan untuk PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#4F46E5" />
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('service-worker.js')
+      .then(() => console.log("✅ Service Worker aktif"))
+      .catch(err => console.log("❌ SW gagal:", err));
+  }
+</script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Jadwal & Pengingat</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#0f1724; --card:#0b1220; --muted:#9aa4b2; --accent:#7c5cff; --glass: rgba(255,255,255,0.03);
+      --radius:14px;
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; min-height:100vh; background: radial-gradient(1000px 600px at 10% 10%, rgba(124,92,255,0.12), transparent),
+                                     radial-gradient(800px 500px at 90% 90%, rgba(0,200,255,0.04), transparent);
+      background-color:var(--bg); color:#e6eef8; display:flex; align-items:center; justify-content:center; padding:28px;
+    }
+
+    .container{width:100%; max-width:980px;}
+    .card{
+      background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      border-radius:var(--radius); padding:28px; box-shadow: 0 10px 30px rgba(2,6,23,0.6);
+      border: 1px solid rgba(255,255,255,0.03);
+    }
+
+    header.app-header{display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;}
+    .brand{display:flex; gap:12px; align-items:center;}
+    .logo{
+      height:48px; width:48px; border-radius:12px; display:flex; align-items:center; justify-content:center;
+      background:linear-gradient(135deg,var(--accent), #4fb3ff); font-weight:700; color:white; font-size:18px;
+      box-shadow: 0 6px 18px rgba(124,92,255,0.18);
+    }
+    h1{margin:0; font-size:18px; letter-spacing:0.2px}
+    p.lead{margin:0; color:var(--muted); font-size:13px}
+
+    /* pages */
+    .page{display:none}
+    .page.active{display:block}
+
+    /* form */
+    .form-row{display:flex; gap:12px; margin-bottom:12px}
+    label{display:block; margin-bottom:6px; font-size:13px; color:var(--muted)}
+    input[type=text], input[type=password], input[type=time], input[type=date], select, textarea{
+      width:100%; padding:10px 12px; border-radius:10px; border:1px solid rgba(255,255,255,0.04);
+      background:var(--glass); color:inherit; outline:none; font-size:14px;
+    }
+    button{
+      background:linear-gradient(90deg,var(--accent), #4fb3ff); color:white; border:none; padding:10px 14px; border-radius:10px;
+      cursor:pointer; font-weight:600; box-shadow: 0 8px 24px rgba(124,92,255,0.12);
+    }
+    .muted{color:var(--muted); font-size:13px}
+
+    .grid{display:grid; grid-template-columns: 1fr 320px; gap:18px}
+    .full{grid-column: 1 / -1}
+
+    /* list */
+    .card-sm{background: rgba(255,255,255,0.02); padding:14px; border-radius:12px; margin-bottom:12px; border:1px solid rgba(255,255,255,0.02)}
+    .day-row{display:flex; align-items:center; justify-content:space-between; gap:12px}
+    .pill{background:rgba(255,255,255,0.03); padding:6px 10px; border-radius:999px; font-size:13px; color:var(--muted)}
+
+    /* schedule list */
+    .lesson{display:flex; gap:12px; align-items:center; justify-content:space-between; padding:8px; border-radius:10px}
+    .lesson .left{display:flex; gap:12px; align-items:center}
+    .lesson .time{font-weight:700; min-width:72px; text-align:left}
+    .lesson .subject{font-size:15px}
+    .small{font-size:12px; color:var(--muted)}
+    .controls{display:flex; gap:8px}
+
+    /* tasks */
+    .task{display:flex; gap:12px; align-items:center; justify-content:space-between; padding:10px; border-radius:10px}
+    .task .meta{font-size:12px; color:var(--muted)}
+
+    footer{margin-top:16px; text-align:center; color:var(--muted); font-size:13px}
+
+    /* responsive */
+    @media (max-width:880px){
+      .grid{grid-template-columns:1fr; }
+      .container{padding:0 12px}
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card" id="app">
+
+      <header class="app-header">
+        <div class="brand">
+          <div class="logo">JP</div>
+          <div>
+            <h1>Jadwal & Pengingat</h1>
+            <p class="lead">Modern • Sederhana • Notifikasi tugas</p>
+          </div>
+        </div>
+        <div id="user-area" style="display:none">
+          <div class="muted" id="user-name">Hai, User</div>
+        </div>
+      </header>
+
+      <!-- PAGE: Login -->
+      <section id="page-login" class="page active">
+        <h2 style="margin-top:0">Masuk</h2>
+        <p class="muted">Masuk untuk mengelola jadwal dan tugasmu. (Login sederhana — tidak terenkripsi)</p>
+
+        <div style="max-width:520px; margin-top:16px;">
+          <label>Username</label>
+          <input id="login-username" type="text" placeholder="Nama kamu">
+          <label style="margin-top:10px">Password</label>
+          <input id="login-password" type="password" placeholder="Password">
+          <div style="display:flex; gap:8px; margin-top:14px;">
+            <button id="login-btn">Masuk</button>
+            <button id="demo-btn" style="background:transparent; color:var(--accent); border:1px solid rgba(124,92,255,0.14)">Coba Demo</button>
+            <div style="flex:1"></div>
+            <button id="request-notif" style="background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.03)">Izinkan Notifikasi</button>
+          </div>
+          <p class="muted" style="margin-top:12px">Notifikasi akan muncul bila browser mengizinkan dan halaman dibuka.</p>
+        </div>
+      </section>
+
+      <!-- PAGE: Dashboard (choice) -->
+      <section id="page-dashboard" class="page">
+        <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px">
+          <h2 style="margin:0">Dashboard</h2>
+          <div class="pill" id="today-pill"></div>
+          <div style="flex:1"></div>
+          <button id="logout-btn" style="background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.03)">Logout</button>
+        </div>
+
+        <div class="grid">
+          <div>
+            <div class="card-sm" style="display:flex; gap:12px; align-items:center; justify-content:space-between; margin-bottom:18px">
+              <div>
+                <div style="font-weight:700; font-size:16px">Pilih</div>
+                <div class="muted">Pilih untuk melihat jadwal atau tugas</div>
+              </div>
+              <div style="display:flex; gap:8px">
+                <button id="goto-schedule">Jadwal Pelajaran</button>
+                <button id="goto-tasks" style="background:transparent; color:white; border:1px solid rgba(255,255,255,0.04)">Tugas</button>
+              </div>
+            </div>
+
+            <div class="card-sm">
+              <div style="font-weight:700">Ringkasan Hari Ini</div>
+              <div class="muted" id="summary-text" style="margin-top:8px">Memuat...</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="card-sm">
+              <div style="font-weight:700">Notifikasi</div>
+              <div class="muted" id="notif-info" style="margin-top:8px">
+                Belum ada notifikasi terjadwal.
+              </div>
+            </div>
+
+            <div class="card-sm" style="margin-top:12px">
+              <div style="font-weight:700">Aksi cepat</div>
+              <div style="margin-top:8px; display:flex; gap:6px">
+                <button id="add-quick-task">Tambah Tugas Cepat</button>
+                <button id="add-quick-lesson" style="background:transparent; border:1px solid rgba(255,255,255,0.03)">Tambah Mapel Cepat</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- PAGE: Schedule -->
+      <section id="page-schedule" class="page">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px">
+          <button id="back-dashboard" style="background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.03)">← Kembali</button>
+          <h2 style="margin:0">Jadwal Pelajaran</h2>
+          <div style="flex:1"></div>
+          <div class="muted small">Tambahkan banyak mapel per hari</div>
+        </div>
+
+        <div class="grid">
+          <div>
+            <div class="card-sm full">
+              <div style="font-weight:700">Tambah Pelajaran</div>
+              <div style="margin-top:10px">
+                <label>Hari</label>
+                <select id="lesson-day">
+                  <option value="Senin">Senin</option>
+                  <option value="Selasa">Selasa</option>
+                  <option value="Rabu">Rabu</option>
+                  <option value="Kamis">Kamis</option>
+                  <option value="Jumat">Jumat</option>
+                  <option value="Sabtu">Sabtu</option>
+                  <option value="Minggu">Minggu</option>
+                </select>
+
+                <div class="form-row" style="margin-top:8px">
+                  <div style="flex:1">
+                    <label>Waktu</label>
+                    <input id="lesson-time" type="time" value="07:00">
+                  </div>
+                  <div style="flex:2">
+                    <label>Mata Pelajaran</label>
+                    <input id="lesson-subject" type="text" placeholder="Contoh: Matematika">
+                  </div>
+                </div>
+
+                <div style="display:flex; gap:8px; margin-top:10px">
+                  <button id="add-lesson-btn">Tambah Pelajaran</button>
+                  <button id="clear-all-lessons" style="background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.03)">Hapus Semua</button>
+                </div>
+              </div>
+            </div>
+
+            <div id="lessons-list" style="margin-top:14px"></div>
+          </div>
+
+          <div>
+            <div class="card-sm">
+              <div style="font-weight:700">Filter & Import/Export</div>
+              <div style="margin-top:8px" class="muted">
+                <div style="margin-bottom:8px">Ekspor / Impor data jadwal (JSON)</div>
+                <div style="display:flex; gap:8px;">
+                  <button id="export-schedule">Ekspor Jadwal</button>
+                  <button id="import-schedule" style="background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.03)">Impor</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card-sm" style="margin-top:12px">
+              <div style="font-weight:700">Tips</div>
+              <div class="muted" style="margin-top:8px">Kamu dapat menambahkan lebih dari 1 mapel per hari. Urutan diurutkan berdasarkan waktu.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PAGE: Tasks -->
+      <section id="page-tasks" class="page">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px">
+          <button id="back-dashboard-2" style="background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.03)">← Kembali</button>
+          <h2 style="margin:0">Tugas</h2>
+          <div style="flex:1"></div>
+          <div class="muted small">Buat tugas dan set notifikasi pengingat</div>
+        </div>
+
+        <div class="grid">
+          <div>
+            <div class="card-sm full">
+              <div style="font-weight:700">Tambah Tugas</div>
+              <div style="margin-top:10px">
+                <label>Judul</label>
+                <input id="task-title" type="text" placeholder="Contoh: PR Matematika">
+
+                <label style="margin-top:8px">Deskripsi (opsional)</label>
+                <textarea id="task-desc" rows="3" placeholder="Detail tugas..."></textarea>
+
+                <div class="form-row" style="margin-top:8px">
+                  <div style="flex:1">
+                    <label>Tanggal</label>
+                    <input id="task-date" type="date">
+                  </div>
+                  <div style="flex:1">
+                    <label>Waktu</label>
+                    <input id="task-time" type="time">
+                  </div>
+                </div>
+
+                <label style="margin-top:8px">Ingatkan (menit sebelum) — optional</label>
+                <input id="task-remind" type="number" min="0" placeholder="Contoh: 30" />
+
+                <div style="display:flex; gap:8px; margin-top:10px">
+                  <button id="add-task-btn">Tambah Tugas</button>
+                  <button id="clear-all-tasks" style="background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.03)">Hapus Semua</button>
+                </div>
+              </div>
+            </div>
+
+            <div id="tasks-list" style="margin-top:14px"></div>
+          </div>
+
+          <div>
+            <div class="card-sm">
+              <div style="font-weight:700">Ekspor / Impor Tugas</div>
+              <div style="margin-top:8px" class="muted">
+                <div style="display:flex; gap:8px;">
+                  <button id="export-tasks">Ekspor Tugas</button>
+                  <button id="import-tasks" style="background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.03)">Impor</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card-sm" style="margin-top:12px">
+              <div style="font-weight:700">Info Notifikasi</div>
+              <div class="muted" style="margin-top:8px">
+                Notifikasi akan muncul jika izin diberikan dan halaman aktif. Untuk notifikasi ketika browser ditutup butuh service worker / PWA.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer>
+        Dibuat dengan ringkas • Penyimpanan lokal (localStorage)
+      </footer>
+
+    </div>
+  </div>
+
+  <script>
+    /***********************
+     Data model (localStorage)
+       - user: {name}
+       - schedule: { day: [ {time, subject, id} ] } // days: Senin..Minggu
+       - tasks: [ {id, title, desc, datetimeISO, remindMinutes, done} ]
+    ************************/
+
+    // Utilities
+    const $ = id => document.getElementById(id);
+    const days = ["Senin","Selasa","Rabu","Kamis","Jumat","Sabtu","Minggu"];
+    const uid = ()=> Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+
+    // Storage helpers
+    function load(key, fallback){
+      const raw = localStorage.getItem(key);
+      if(!raw) return fallback;
+      try { return JSON.parse(raw); } catch(e){ return fallback; }
+    }
+    function save(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
+
+    // Initial data
+    let user = load('jp_user', null);
+    let schedule = load('jp_schedule', {});
+    let tasks = load('jp_tasks', []);
+
+    // UI pages
+    const pageLogin = $('page-login'), pageDash = $('page-dashboard'), pageSchedule = $('page-schedule'), pageTasks = $('page-tasks');
+    const pages = [pageLogin, pageDash, pageSchedule, pageTasks];
+    function showPage(p){
+      pages.forEach(x=>x.classList.remove('active'));
+      p.classList.add('active');
+      // update header user area
+      if(p !== pageLogin && user){
+        $('user-area').style.display='block';
+        $('user-name').textContent = 'Hai, ' + (user.name || 'User');
+      } else $('user-area').style.display='none';
+      if(p===pageDash) renderDashboard();
+      if(p===pageSchedule) renderScheduleList();
+      if(p===pageTasks) renderTaskList();
+    }
+
+    // Login actions
+    $('login-btn').addEventListener('click', ()=>{
+      const name = $('login-username').value.trim();
+      const pw = $('login-password').value.trim();
+      if(!name || !pw){ alert('Isi username & password (any).'); return; }
+      user = {name};
+      save('jp_user', user);
+      showPage(pageDash);
+    });
+    $('demo-btn').addEventListener('click', ()=>{
+      // demo user + sample data
+      user = {name:'Siswa Demo'};
+      save('jp_user', user);
+      // sample schedule if empty
+      if(Object.keys(schedule).length===0){
+        schedule = {
+          "Senin":[ {id:uid(), time:'07:00', subject:'Matematika'}, {id:uid(), time:'09:00', subject:'Bahasa Inggris'} ],
+          "Selasa":[ {id:uid(), time:'08:00', subject:'IPA'} ],
+          "Rabu":[],
+          "Kamis":[],
+          "Jumat":[ {id:uid(), time:'10:00', subject:'Sejarah'} ],
+          "Sabtu":[],
+          "Minggu":[]
+        };
+        save('jp_schedule', schedule);
+      }
+      if(tasks.length===0){
+        tasks.push({ id:uid(), title:'PR Matematika', desc:'Hal. 12-14', datetimeISO: new Date(Date.now()+3600*1000).toISOString(), remindMinutes:30, done:false });
+        save('jp_tasks', tasks);
+      }
+      showPage(pageDash);
+    });
+
+    // Logout
+    $('logout-btn').addEventListener('click', ()=>{
+      localStorage.removeItem('jp_user');
+      user = null;
+      showPage(pageLogin);
+    });
+
+    // Request Notification permission
+    $('request-notif').addEventListener('click', async ()=>{
+      if(!('Notification' in window)){ alert('Browser tidak mendukung notifikasi.'); return; }
+      const r = await Notification.requestPermission();
+      alert('Izin notifikasi: ' + r);
+    });
+
+    // Dashboard
+    function renderDashboard(){
+      const todayName = days[(new Date().getDay()+6)%7]; // getDay: 0=Sun; convert to Senin..Minggu
+      $('today-pill').textContent = todayName;
+      // summary
+      const todaysLessons = (schedule[todayName] || []).length;
+      const todaysTasks = tasks.filter(t=>{
+        const dt = new Date(t.datetimeISO);
+        const same = dt.toDateString() === new Date().toDateString();
+        return same && !t.done;
+      }).length;
+      $('summary-text').textContent = `${todaysLessons} mapel hari ini • ${todaysTasks} tugas belum selesai hari ini.`;
+      // notif info
+      const upcoming = getUpcomingNotifications(5);
+      if(upcoming.length===0) $('notif-info').textContent = 'Belum ada notifikasi terjadwal.';
+      else {
+        $('notif-info').innerHTML = upcoming.map(u=> `${u.title} — ${new Date(u.time).toLocaleString()}`).join('<br>');
+      }
+    }
+
+    // Navigation buttons
+    $('goto-schedule').addEventListener('click', ()=> showPage(pageSchedule));
+    $('goto-tasks').addEventListener('click', ()=> showPage(pageTasks));
+    $('back-dashboard').addEventListener('click', ()=> showPage(pageDash));
+    $('back-dashboard-2').addEventListener('click', ()=> showPage(pageDash));
+
+    // Schedule functions
+    $('add-lesson-btn').addEventListener('click', ()=>{
+      const day = $('lesson-day').value;
+      const time = $('lesson-time').value;
+      const subject = $('lesson-subject').value.trim();
+      if(!time || !subject){ alert('Isi waktu dan mata pelajaran'); return; }
+      if(!schedule[day]) schedule[day]=[];
+      schedule[day].push({id:uid(), time, subject});
+      // sort by time
+      schedule[day].sort((a,b)=> a.time.localeCompare(b.time));
+      save('jp_schedule', schedule);
+      $('lesson-subject').value='';
+      renderScheduleList();
+    });
+
+    $('clear-all-lessons').addEventListener('click', ()=>{
+      if(!confirm('Hapus semua jadwal?')) return;
+      schedule = {};
+      save('jp_schedule', schedule);
+      renderScheduleList();
+    });
+
+    function renderScheduleList(){
+      const cont = $('lessons-list');
+      cont.innerHTML = '';
+      days.forEach(day=>{
+        const arr = schedule[day] || [];
+        const wrap = document.createElement('div');
+        wrap.className='card-sm';
+        const header = document.createElement('div');
+        header.className='day-row';
+        header.innerHTML = `<div style="display:flex; gap:12px; align-items:center"><div style="font-weight:700">${day}</div><div class="pill">${arr.length} mapel</div></div>
+                            <div class="small">${arr.length ? 'Urut berdasar waktu' : 'Kosong'}</div>`;
+        wrap.appendChild(header);
+
+        if(arr.length){
+          const list = document.createElement('div');
+          list.style.marginTop='8px';
+          arr.forEach(ls=>{
+            const el = document.createElement('div');
+            el.className='lesson';
+            el.innerHTML = `<div class="left"><div class="time">${ls.time}</div><div class="subject">${ls.subject}</div></div>
+                            <div class="controls">
+                              <button data-day="${day}" data-id="${ls.id}" class="del-lesson" style="background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.03)">Hapus</button>
+                            </div>`;
+            list.appendChild(el);
+          });
+          wrap.appendChild(list);
+        }
+        cont.appendChild(wrap);
+      });
+
+      // attach delete listeners
+      document.querySelectorAll('.del-lesson').forEach(btn=>{
+        btn.addEventListener('click', (ev)=>{
+          const day = btn.dataset.day; const id = btn.dataset.id;
+          schedule[day] = (schedule[day] || []).filter(x=> x.id !== id);
+          save('jp_schedule', schedule);
+          renderScheduleList();
+        });
+      });
+    }
+
+    // export/import schedule
+    $('export-schedule').addEventListener('click', ()=>{
+      const blob = new Blob([JSON.stringify(schedule, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download='jadwal.json'; a.click();
+      URL.revokeObjectURL(url);
+    });
+    $('import-schedule').addEventListener('click', ()=>{
+      const input = document.createElement('input'); input.type='file'; input.accept='application/json';
+      input.onchange = async e => {
+        const file = e.target.files[0]; if(!file) return;
+        const text = await file.text();
+        try{
+          const obj = JSON.parse(text);
+          schedule = obj;
+          save('jp_schedule', schedule);
+          renderScheduleList();
+          alert('Impor berhasil');
+        }catch(e){ alert('File tidak valid'); }
+      };
+      input.click();
+    });
+
+    // Tasks functions
+    $('add-task-btn').addEventListener('click', ()=>{
+      const title = $('task-title').value.trim();
+      const desc = $('task-desc').value.trim();
+      const date = $('task-date').value;
+      const time = $('task-time').value;
+      const remind = parseInt($('task-remind').value) || 0;
+      if(!title || !date || !time){ alert('Isi judul, tanggal dan waktu'); return; }
+      const dt = new Date(date + 'T' + time);
+      const t = { id:uid(), title, desc, datetimeISO: dt.toISOString(), remindMinutes: remind, done:false };
+      tasks.push(t);
+      save('jp_tasks', tasks);
+      // schedule notification if applicable
+      scheduleNotificationForTask(t);
+      // clear form
+      $('task-title').value=''; $('task-desc').value=''; $('task-date').value=''; $('task-time').value=''; $('task-remind').value='';
+      renderTaskList();
+    });
+
+    $('clear-all-tasks').addEventListener('click', ()=>{
+      if(!confirm('Hapus semua tugas?')) return;
+      tasks = [];
+      save('jp_tasks', tasks);
+      renderTaskList();
+    });
+
+    function renderTaskList(){
+      const cont = $('tasks-list');
+      cont.innerHTML = '';
+      if(tasks.length===0){ cont.innerHTML = '<div class="muted">Belum ada tugas.</div>'; return; }
+      // sort by datetime
+      tasks.sort((a,b)=> new Date(a.datetimeISO) - new Date(b.datetimeISO));
+      tasks.forEach(t=>{
+        const wrap = document.createElement('div');
+        wrap.className='card-sm';
+        wrap.innerHTML = `<div class="task">
+            <div>
+              <div style="font-weight:700">${t.title} ${t.done?'<span class="pill" style="background:#15302a;color:#9ef0c9">Selesai</span>':''}</div>
+              <div class="meta">${t.desc || ''}</div>
+              <div class="small" style="margin-top:6px">${new Date(t.datetimeISO).toLocaleString()} • Ingat: ${t.remindMinutes || 0} menit sebelum</div>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center">
+              <button data-id="${t.id}" class="toggle-done" style="background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.03)">${t.done?'Batal Selesai':'Selesai'}</button>
+              <button data-id="${t.id}" class="del-task" style="background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.03)">Hapus</button>
+            </div>
+          </div>`;
+        cont.appendChild(wrap);
+      });
+      // listeners
+      document.querySelectorAll('.del-task').forEach(b=>{
+        b.addEventListener('click', ()=>{
+          const id = b.dataset.id;
+          tasks = tasks.filter(x=> x.id !== id);
+          save('jp_tasks', tasks);
+          renderTaskList();
+        });
+      });
+      document.querySelectorAll('.toggle-done').forEach(b=>{
+        b.addEventListener('click', ()=>{
+          const id = b.dataset.id;
+          tasks = tasks.map(x=> x.id===id ? {...x, done: !x.done} : x);
+          save('jp_tasks', tasks);
+          renderTaskList();
+        });
+      });
+    }
+
+    // Export / Import tasks
+    $('export-tasks').addEventListener('click', ()=>{
+      const blob = new Blob([JSON.stringify(tasks, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download='tugas.json'; a.click();
+      URL.revokeObjectURL(url);
+    });
+    $('import-tasks').addEventListener('click', ()=>{
+      const input = document.createElement('input'); input.type='file'; input.accept='application/json';
+      input.onchange = async e => {
+        const file = e.target.files[0]; if(!file) return;
+        const text = await file.text();
+        try{
+          const arr = JSON.parse(text);
+          if(!Array.isArray(arr)) throw new Error('Invalid');
+          tasks = arr;
+          save('jp_tasks', tasks);
+          renderTaskList();
+          alert('Impor tugas berhasil');
+        }catch(e){ alert('File tidak valid'); }
+      };
+      input.click();
+    });
+
+    // Quick buttons
+    $('add-quick-task').addEventListener('click', ()=>{
+      const dt = new Date(Date.now() + 2*3600*1000); // 2 jam lagi
+      $('task-title').value = 'Tugas Cepat';
+      $('task-desc').value = 'Tugas singkat';
+      $('task-date').value = dt.toISOString().slice(0,10);
+      $('task-time').value = dt.toTimeString().slice(0,5);
+      showPage(pageTasks);
+    });
+    $('add-quick-lesson').addEventListener('click', ()=>{
+      $('lesson-day').value = days[(new Date().getDay()+6)%7];
+      $('lesson-time').value = new Date().toTimeString().slice(0,5);
+      $('lesson-subject').value = 'Mapel Cepat';
+      showPage(pageSchedule);
+    });
+
+    // Notifications scheduler
+    let scheduledTimeouts = {}; // id -> timeoutId
+
+    function requestPermissionIfNeeded(){ if('Notification' in window && Notification.permission !== 'granted'){ Notification.requestPermission(); } }
+
+    function scheduleNotificationForTask(task){
+      try{
+        if(!('Notification' in window)) return;
+        if(Notification.permission !== 'granted') return;
+        const remind = parseInt(task.remindMinutes) || 0;
+        const tDate = new Date(task.datetimeISO);
+        const notifTime = new Date(tDate.getTime() - remind*60000);
+        const now = new Date();
+        const ms = notifTime - now;
+        if(ms <= 0){
+          // time passed or immediate -> show now
+          showNotification(task);
+          return;
+        }
+        // schedule (only while page open)
+        const to = setTimeout(()=> {
+          showNotification(task);
+          delete scheduledTimeouts[task.id];
+        }, ms);
+        // clear previous
+        if(scheduledTimeouts[task.id]) clearTimeout(scheduledTimeouts[task.id]);
+        scheduledTimeouts[task.id] = to;
+      }catch(e){ console.error(e); }
+    }
+
+    function showNotification(task){
+      if('Notification' in window && Notification.permission === 'granted'){
+        const n = new Notification(task.title, {
+          body: (task.desc || '') + ' • ' + new Date(task.datetimeISO).toLocaleString(),
+          tag: task.id
+        });
+        n.onclick = ()=> window.focus();
+      }
+      // also show in-app alert
+      alert('Pengingat: ' + task.title + '\n' + (task.desc || '') );
+    }
+
+    // schedule notifications for all tasks on load
+    function scheduleAll(){
+      if(!('Notification' in window) || Notification.permission !== 'granted') return;
+      tasks.forEach(t=>{
+        if(!t.done) scheduleNotificationForTask(t);
+      });
+    }
+
+    // helper: get upcoming notifications (next n)
+    function getUpcomingNotifications(limit=5){
+      const lst = tasks.filter(t=> !t.done).map(t=>{
+        const dt = new Date(t.datetimeISO);
+        const nt = new Date(dt.getTime() - (parseInt(t.remindMinutes)||0)*60000);
+        return {id:t.id, title:t.title, time: nt};
+      }).filter(x=> x.time >= new Date()).sort((a,b)=> a.time-b.time);
+      return lst.slice(0,limit);
+    }
+
+    // On load: render appropriate page
+    (function init(){
+      // load default empty schedule keys
+      days.forEach(d=> { if(!schedule[d]) schedule[d] = schedule[d] || []; });
+      save('jp_schedule', schedule);
+      if(user) showPage(pageDash); else showPage(pageLogin);
+
+      // set today default values
+      const today = new Date();
+      const isoDate = today.toISOString().slice(0,10);
+      $('task-date').value = isoDate;
+
+      // schedule notifications only if permission granted
+      if('Notification' in window && Notification.permission === 'granted') scheduleAll();
+
+      // when permissions change, try scheduling
+      if('Notification' in window){
+        // some browsers don't support onchange — keep simple poll on focus
+        window.addEventListener('focus', ()=> {
+          if(Notification.permission === 'granted') scheduleAll();
+        });
+      }
+
+      // render lists for safe start
+      renderScheduleList();
+      renderTaskList();
+    })();
+
+    // When tasks changed in storage (e.g. another tab), update UI
+    window.addEventListener('storage', (e)=>{
+      if(e.key === 'jp_tasks'){ tasks = load('jp_tasks', []); renderTaskList(); scheduleAll(); }
+      if(e.key === 'jp_schedule'){ schedule = load('jp_schedule', {}); renderScheduleList(); }
+      if(e.key === 'jp_user'){ user = load('jp_user', null); if(!user) showPage(pageLogin); else showPage(pageDash); }
+    });
+
+    // small UX: show today name
+    document.addEventListener('DOMContentLoaded', ()=> {
+      const todayName = days[(new Date().getDay()+6)%7];
+      $('today-pill').textContent = todayName;
+    });
+
+  </script>
+</body>
+</html>
